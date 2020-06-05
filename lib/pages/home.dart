@@ -1,4 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fbsocialmediaapp/models/user.dart';
 import 'package:fbsocialmediaapp/pages/activity_feed.dart';
+import 'package:fbsocialmediaapp/pages/create_account.dart';
 import 'package:fbsocialmediaapp/pages/profile.dart';
 import 'package:fbsocialmediaapp/pages/search.dart';
 import 'package:fbsocialmediaapp/pages/timeline.dart';
@@ -7,7 +10,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-final GoogleSignIn googleSignIn = GoogleSignIn();
+final GoogleSignIn _googleSignIn = GoogleSignIn();
+final _usersRef = Firestore.instance.collection('users');
+final DateTime timeStamp = DateTime.now();
+User currentUser;
 
 class Home extends StatefulWidget {
   @override
@@ -23,22 +29,22 @@ class _HomeState extends State<Home> {
   void initState() {
     super.initState();
     pageController = PageController(initialPage: pageIndex);
-    googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount account) {
-      handlerSignIn(account);
+    _googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount account) {
+      _handlerSignIn(account);
     }, onError: (err) {
       print('Error signed in! $err');
     });
     //Reautentica usuario silenciosamnete quando abre o app
-    googleSignIn.signInSilently(suppressErrors: false).then((GoogleSignInAccount account) {
-      handlerSignIn(account);
+    _googleSignIn.signInSilently(suppressErrors: false).then((GoogleSignInAccount account) {
+      _handlerSignIn(account);
     }).catchError((err) {
       print('Error signed in! $err');
     });
   }
 
-  handlerSignIn(GoogleSignInAccount account) {
+  _handlerSignIn(GoogleSignInAccount account) {
     if (account != null) {
-      print(account);
+      _createUserInFirebase();
       setState(() {
         isAuth = true;
       });
@@ -49,12 +55,38 @@ class _HomeState extends State<Home> {
     }
   }
 
-  void login() {
-    googleSignIn.signIn();
+  _createUserInFirebase() async {
+    final GoogleSignInAccount user = _googleSignIn.currentUser;
+    DocumentSnapshot doc = await _usersRef.document(user.id).get();
+    
+    if(!doc.exists){
+      final username = await Navigator.push(context, MaterialPageRoute(builder: (_) => CreateAccount
+        ()));
+      
+      _usersRef.document(user.id).setData({
+        'id': user.id,
+        'username': username,
+        'photoUrl': user.photoUrl,
+        'email': user.email,
+        'displayName': user.displayName,
+        'bio': '',
+        'timestamp': timeStamp
+      });
+      doc = await _usersRef.document(user.id).get();
+    }
+    
+    currentUser = User.fromDocument(doc);
+    print(currentUser);
+    print(currentUser.displayName);
+    
   }
 
-  void logout() {
-    googleSignIn.signOut();
+  void _login() {
+    _googleSignIn.signIn();
+  }
+
+  void _logout() {
+    _googleSignIn.signOut();
   }
 
   @override
@@ -63,13 +95,13 @@ class _HomeState extends State<Home> {
     super.dispose();
   }
 
-  void onPageChanged(int pageIndex) {
+  void _onPageChanged(int pageIndex) {
     setState(() {
       this.pageIndex = pageIndex;
     });
   }
 
-  void onTap(int pageIndex) {
+  void _onTap(int pageIndex) {
     pageController.animateToPage(
       pageIndex,
       duration: Duration(seconds: 1),
@@ -82,20 +114,24 @@ class _HomeState extends State<Home> {
       body: SafeArea(
         child: PageView(
           children: <Widget>[
-            Timeline(),
+            //Timeline(),
+            RaisedButton(
+              child: Text('Logout'),
+              onPressed: _logout,
+            ),
             ActivityFeed(),
             Upload(),
             Search(),
             Profile(),
           ],
           controller: pageController,
-          onPageChanged: onPageChanged,
+          onPageChanged: _onPageChanged,
           physics: NeverScrollableScrollPhysics(),
         ),
       ),
       bottomNavigationBar: CupertinoTabBar(
         currentIndex: pageIndex,
-        onTap: onTap,
+        onTap: _onTap,
         activeColor: Theme.of(context).primaryColor,
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.whatshot)),
@@ -140,7 +176,7 @@ class _HomeState extends State<Home> {
                 ),
               ),
               GestureDetector(
-                onTap: login,
+                onTap: _login,
                 child: Container(
                   width: 260,
                   height: 60,
